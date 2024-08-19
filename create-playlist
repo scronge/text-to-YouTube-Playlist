@@ -1,0 +1,153 @@
+# This code was originally made to run on a Google Colab Notebook Environment
+# To Install any missing libraries:
+# !pip install google-auth google-auth-oauthlib google-api-python-client
+
+# Imports
+from google.colab import files
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+import os
+
+# Upload your client_secret.json file (OAuth 2.0 credentials)
+# uploaded = files.upload()
+
+# Make sure you've uploaded your client_secret.json file
+CLIENT_SECRETS_FILE = "client_secret.json"  # Update with your JSON file's name
+SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
+
+def get_authenticated_service():
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=SCOPES,
+        redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+
+    auth_url, _ = flow.authorization_url(prompt='consent')
+
+    print('Please go to this URL and finish the authentication flow: {}'.format(auth_url))
+    code = input('Enter the authorization code: ')
+    flow.fetch_token(code=code)
+
+    return build('youtube', 'v3', credentials=flow.credentials)
+
+
+# Initialize the YouTube API client
+youtube = get_authenticated_service()
+
+# The rest of your script goes here
+# For example, a function to create a playlist
+def create_playlist(title, description):
+    request = youtube.playlists().insert(
+        part="snippet,status",
+        body={
+          "snippet": {
+            "title": title,
+            "description": description
+          },
+          "status": {
+            "privacyStatus": "private"
+          }
+        }
+    )
+    response = request.execute()
+    print(f"Playlist created: {response['id']}")
+    return response['id']
+
+# Example: Create a new playlist
+# create_playlist("Test Playlist", "This is a test playlist")
+
+def get_playlist_video_ids(playlist_id):
+    video_ids = []
+    next_page_token = None
+
+    while True:
+        request = youtube.playlistItems().list(
+            part="snippet",
+            playlistId=playlist_id,
+            maxResults=50,  # API maximum for this endpoint
+            pageToken=next_page_token
+        )
+        response = request.execute()
+
+        for item in response.get('items', []):
+            video_ids.append(item['snippet']['resourceId']['videoId'])
+
+        next_page_token = response.get('nextPageToken')
+        if not next_page_token:
+            break
+
+    return video_ids
+
+def search_youtube(song_title):
+    """Search for a song on YouTube and return the video ID of the top result."""
+    search_response = youtube.search().list(
+        q=song_title, part='id,snippet', maxResults=1, type='video'
+    ).execute()
+
+    items = search_response.get('items')
+    if not items:
+        print(f"No results found for '{song_title}'")
+        return None
+
+    return items[0]['id']['videoId']
+
+def video_exists(video_id):
+    """Check if a video exists and is accessible."""
+    try:
+        youtube.videos().list(id=video_id, part="id").execute()
+        return True
+    except Exception as e:
+        print(f"Error checking video: {e}")
+        return False
+
+def is_video_in_playlist(playlist_id, video_id):
+    """Check if a video is already in the specified playlist."""
+    response = youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50).execute()
+
+    for item in response.get("items", []):
+        if item["snippet"]["resourceId"]["videoId"] == video_id:
+            return True
+    return False
+
+def add_video_to_playlist(playlist_id, video_id):
+    """Add a video to the specified playlist, with checks for existence and duplicates."""
+    if not video_exists(video_id):
+        print(f"Video {video_id} does not exist or is not accessible.")
+        return
+
+    if is_video_in_playlist(playlist_id, video_id):
+        print(f"Video {video_id} is already in the playlist.")
+        return
+
+    try:
+        youtube.playlistItems().insert(
+            part="snippet",
+            body={
+                'snippet': {
+                    'playlistId': playlist_id,
+                    'resourceId': {
+                        'kind': 'youtube#video',
+                        'videoId': video_id
+                    }
+                }
+            }
+        ).execute()
+        print(f"Added video {video_id} to playlist.")
+    except Exception as e:
+        print(f"Error adding video to playlist: {e}")
+
+playlist_id = "your_playlist_ID"  # Use the actual playlist ID
+existing_video_ids = get_playlist_video_ids(playlist_id)
+
+with open('songs.txt', 'r') as file:
+    for line in file:
+        song_title = line.strip()
+        video_id = search_youtube(song_title)
+        if video_id:
+            if video_id in existing_video_ids:
+                print(f"'{song_title}' is already in the playlist.")
+            else:
+                add_video_to_playlist(playlist_id, video_id)
+                existing_video_ids.append(video_id)  # Update the local list
+                print(f"Added '{song_title}' to playlist.")
+        else:
+            print(f"Could not find a YouTube video for '{song_title}'.")
