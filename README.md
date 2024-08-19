@@ -1,6 +1,7 @@
 # text-to-YouTube-Playlist
-Uses the YouTube API to turn a list of song names in order to create a playlist
 
-My dad lost a lot of songs after a failed backup on an old ITunes library so I made him this replacement after finding the text file for the playlist on ITunes Desktop
+Python app that uses the YouTube API to turn a list of song names in order to create a YouTube playlist. Runs in Google Colab notebook.
 
-The only downsides are that the API is rate-limited and you have to submit a form to request a cap increase, and that it returns the top result for that query which in very few cases is not the song (could be a live concert or some random)
+After losing many songs in a failed ITunes backup, I was able to recover the text file.
+
+The only downsides are that the API is rate-limited and you must submit a form to request a cap increase, and it rarely returns the top result for that query which in very few cases is not the original song.
